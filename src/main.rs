@@ -1,4 +1,5 @@
 use rand::seq::SliceRandom;
+use rand::Rng;
 use std::io::stdin;
 
 #[derive(Debug)]
@@ -38,9 +39,22 @@ impl Board {
 
     fn init_queens(n: u32) -> Vec<u32> {
         let mut queens: Vec<u32> = vec![];
+        let mut rnd = rand::thread_rng();
+        let mut available_indices = vec![];
 
         for i in 0..n {
-            queens.push(i);
+            available_indices.push(i);
+        }
+
+        for _ in 0..n {
+            let next_idx = *available_indices.choose(&mut rnd).unwrap();
+            queens.push(next_idx);
+            available_indices.remove(
+                available_indices
+                    .iter()
+                    .position(|x| *x == next_idx)
+                    .unwrap(),
+            );
         }
 
         queens
@@ -54,17 +68,19 @@ impl Board {
         queen_idx + self.queens[queen_idx] as usize
     }
 
-    fn get_queen_collisions(&self, queen_idx: usize) -> u32 {
-        self.main_diag_collis[self.get_queen_main_diag_index(queen_idx)]
-            + self.secondary_diag_collis[self.get_queen_secondary_diag_index(queen_idx)]
+    fn get_pos_collisions(&self, col_idx: usize, row_idx: u32) -> u32 {
+        self.main_diag_collis[self.get_queen_main_diag_index(col_idx)]
+            + self.secondary_diag_collis[self.get_queen_secondary_diag_index(col_idx)]
+            + self.queens.iter().filter(|x| **x == row_idx).count() as u32
     }
 
-    fn get_all_max_min_queens(&self) -> (Vec<usize>, Vec<usize>) {
+    fn get_queen_collisions(&self, queen_idx: usize) -> u32 {
+        self.get_pos_collisions(queen_idx, self.queens[queen_idx])
+    }
+
+    fn get_all_max_queens(&self) -> Vec<usize> {
         let mut max_val = None;
         let mut max_queens = vec![];
-
-        let mut min_val = None;
-        let mut min_queens = vec![];
 
         for i in 0..(self.n as usize) {
             let curr_val = self.get_queen_collisions(i);
@@ -78,54 +94,32 @@ impl Board {
                 max_val = Some(curr_val);
                 max_queens = vec![i];
             }
-
-            if min_val.is_none() {
-                min_val = Some(curr_val);
-                min_queens = vec![i];
-            } else if min_val.unwrap() == curr_val {
-                min_queens.push(i);
-            } else if min_val.unwrap() > curr_val {
-                min_val = Some(curr_val);
-                min_queens = vec![i];
-            }
         }
 
-        (max_queens, min_queens)
+        max_queens
     }
 
-    fn get_max_min_queen(&self) -> (usize, usize) {
-        let (max_queens, min_queens) = self.get_all_max_min_queens();
-        let max_queen = *max_queens.choose(&mut rand::thread_rng()).unwrap();
-        let min_queen = *min_queens.choose(&mut rand::thread_rng()).unwrap();
-        (max_queen, min_queen)
+    fn get_max_queen(&self) -> usize {
+        *self
+            .get_all_max_queens()
+            .choose(&mut rand::thread_rng())
+            .unwrap()
     }
 
-    fn swap_queens(&mut self, idx1: usize, idx2: usize) {
-        let main_diag_index = idx1 as u32 - self.queens[idx1 as usize] + self.n - 1;
-        self.main_diag_collis[main_diag_index as usize] -= 1;
+    fn change_collision_for_queen(&mut self, idx: usize, val: i32) {
+        let main_diag_idx = self.get_queen_main_diag_index(idx);
+        self.main_diag_collis[main_diag_idx] =
+            (self.main_diag_collis[main_diag_idx] as i32 + val) as u32;
 
-        let secondary_diag_index = idx1 as u32 + self.queens[idx1 as usize];
-        self.secondary_diag_collis[secondary_diag_index as usize] -= 1;
+        let secondary_diag_idx = self.get_queen_secondary_diag_index(idx);
+        self.secondary_diag_collis[secondary_diag_idx] =
+            (self.secondary_diag_collis[secondary_diag_idx] as i32 + val) as u32;
+    }
 
-        let main_diag_index = idx2 as u32 - self.queens[idx2 as usize] + self.n - 1;
-        self.main_diag_collis[main_diag_index as usize] -= 1;
-
-        let secondary_diag_index = idx2 as u32 + self.queens[idx2 as usize];
-        self.secondary_diag_collis[secondary_diag_index as usize] -= 1;
-
-        self.queens.swap(idx1, idx2);
-
-        let main_diag_index = idx1 as u32 - self.queens[idx1 as usize] + self.n - 1;
-        self.main_diag_collis[main_diag_index as usize] += 1;
-
-        let secondary_diag_index = idx1 as u32 + self.queens[idx1 as usize];
-        self.secondary_diag_collis[secondary_diag_index as usize] += 1;
-
-        let main_diag_index = idx2 as u32 - self.queens[idx2 as usize] + self.n - 1;
-        self.main_diag_collis[main_diag_index as usize] += 1;
-
-        let secondary_diag_index = idx2 as u32 + self.queens[idx2 as usize];
-        self.secondary_diag_collis[secondary_diag_index as usize] += 1;
+    fn move_queen(&mut self, queen_idx: usize, row_idx: u32) {
+        self.change_collision_for_queen(queen_idx, -1);
+        self.queens[queen_idx] = row_idx;
+        self.change_collision_for_queen(queen_idx, 1);
     }
 
     fn should_stop(&self) -> bool {
@@ -142,16 +136,33 @@ impl Board {
         true
     }
 
+    fn get_min_row_for_queen(&self, queen_idx: usize) -> u32 {
+        let mut min_row = 0;
+        let mut min_row_val = None;
+
+        for i in 0..self.n {
+            let val = self.get_pos_collisions(queen_idx, i);
+
+            if min_row_val.is_none() || min_row_val.unwrap() > val {
+                min_row = i;
+                min_row_val = Some(val);
+            }
+        }
+
+        min_row
+    }
+
     fn solve(&mut self) {
         let mut i: u32 = 0;
 
         loop {
-            let (max_index, min_index) = self.get_max_min_queen();
-            self.swap_queens(min_index, max_index);
+            let max_queen = self.get_max_queen();
+            let min_row = self.get_min_row_for_queen(max_queen);
+            self.move_queen(max_queen, min_row);
 
             i += 1;
 
-            if i >= 10 * self.n {
+            if i >= 3 * self.n {
                 self.init();
                 self.solve();
             }
@@ -160,6 +171,26 @@ impl Board {
                 break;
             }
         }
+    }
+
+    pub fn to_pretty_string(&self) -> String {
+        let mut res = String::new();
+
+        for i in 0..self.n {
+            for j in 0..self.n {
+                if self.queens[i as usize] == j {
+                    res.push('*');
+                } else {
+                    res.push('_');
+                }
+
+                res.push(' ');
+            }
+
+            res.push('\n');
+        }
+
+        res
     }
 }
 
@@ -177,4 +208,6 @@ fn main() {
 
     board.solve();
     dbg!(&board);
+
+    // println!("{}", board.to_pretty_string());
 }
