@@ -7,6 +7,7 @@ struct Board {
     queens: Vec<u32>,
     main_diag_collis: Vec<u32>,
     secondary_diag_collis: Vec<u32>,
+    row_collis: Vec<u32>,
     n: u32,
 }
 
@@ -16,6 +17,7 @@ impl Board {
             queens: vec![],
             main_diag_collis: vec![],
             secondary_diag_collis: vec![],
+            row_collis: vec![],
             n,
         };
 
@@ -26,52 +28,51 @@ impl Board {
     fn init(&mut self) {
         self.main_diag_collis = vec![0; (2 * self.n - 1) as usize];
         self.secondary_diag_collis = vec![0; (2 * self.n - 1) as usize];
-        self.queens = Board::init_queens(self.n);
+        self.row_collis = vec![0; self.n as usize];
+        self.init_queens();
 
         for i in 0..self.n {
-            let main_diag_index = i - self.queens[i as usize] + self.n - 1;
+            let queen_row = self.queens[i as usize];
+
+            let main_diag_index = i - queen_row + self.n - 1;
             self.main_diag_collis[main_diag_index as usize] += 1;
 
-            let secondary_diag_index = i + self.queens[i as usize];
+            let secondary_diag_index = i + queen_row;
             self.secondary_diag_collis[secondary_diag_index as usize] += 1;
+
+            self.row_collis[queen_row as usize] += 1;
         }
     }
 
-    fn init_queens(n: u32) -> Vec<u32> {
-        let mut queens: Vec<u32> = vec![];
-        let mut rnd = rand::thread_rng();
-        let mut available_indices = vec![];
+    fn init_queens(&mut self) {
+        self.queens = vec![];
 
-        for i in 0..n {
-            available_indices.push(i);
+        for i in 0..self.n {
+            self.queens.push(self.get_min_row_for_queen(i as usize));
         }
-
-        for _ in 0..n {
-            let next_idx = *available_indices.choose(&mut rnd).unwrap();
-            queens.push(next_idx);
-            available_indices.remove(
-                available_indices
-                    .iter()
-                    .position(|x| *x == next_idx)
-                    .unwrap(),
-            );
-        }
-
-        queens
     }
 
     fn get_queen_main_diag_index(&self, queen_idx: usize) -> usize {
-        queen_idx - self.queens[queen_idx] as usize + (self.n - 1) as usize
+        self.get_pos_main_diag_index(queen_idx, self.queens[queen_idx] as usize)
     }
 
     fn get_queen_secondary_diag_index(&self, queen_idx: usize) -> usize {
-        queen_idx + self.queens[queen_idx] as usize
+        self.get_pos_secondary_diag_index(queen_idx, self.queens[queen_idx] as usize)
+    }
+
+    fn get_pos_main_diag_index(&self, col_idx: usize, row_idx: usize) -> usize {
+        col_idx - row_idx + (self.n - 1) as usize
+    }
+
+    fn get_pos_secondary_diag_index(&self, col_idx: usize, row_idx: usize) -> usize {
+        col_idx + row_idx
     }
 
     fn get_pos_collisions(&self, col_idx: usize, row_idx: u32) -> u32 {
-        self.main_diag_collis[self.get_queen_main_diag_index(col_idx)]
-            + self.secondary_diag_collis[self.get_queen_secondary_diag_index(col_idx)]
-            + self.queens.iter().filter(|x| **x == row_idx).count() as u32
+        self.main_diag_collis[self.get_pos_main_diag_index(col_idx, row_idx as usize)]
+            + self.secondary_diag_collis
+                [self.get_pos_secondary_diag_index(col_idx, row_idx as usize)]
+            + self.row_collis[row_idx as usize]
     }
 
     fn get_queen_collisions(&self, queen_idx: usize) -> u32 {
@@ -114,6 +115,9 @@ impl Board {
         let secondary_diag_idx = self.get_queen_secondary_diag_index(idx);
         self.secondary_diag_collis[secondary_diag_idx] =
             (self.secondary_diag_collis[secondary_diag_idx] as i32 + val) as u32;
+
+        self.row_collis[self.queens[idx] as usize] =
+            (self.row_collis[self.queens[idx] as usize] as i32 + val) as u32;
     }
 
     fn move_queen(&mut self, queen_idx: usize, row_idx: u32) {
@@ -129,6 +133,12 @@ impl Board {
             }
 
             if self.secondary_diag_collis[i] > 1 {
+                return false;
+            }
+        }
+
+        for i in 0..self.n {
+            if self.row_collis[i as usize] > 1 {
                 return false;
             }
         }
@@ -162,7 +172,7 @@ impl Board {
 
             i += 1;
 
-            if i >= 3 * self.n {
+            if i >= 2 * self.n {
                 self.init();
                 self.solve();
             }
@@ -204,9 +214,8 @@ fn main() {
     let n: u32 = buf.trim().parse().expect("Couldn't parse input to number");
 
     let mut board = Board::new(n);
-    // dbg!(&board);
-
     board.solve();
+
     dbg!(&board);
 
     // println!("{}", board.to_pretty_string());
