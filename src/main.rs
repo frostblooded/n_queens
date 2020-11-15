@@ -1,16 +1,6 @@
 use rand::seq::SliceRandom;
 use std::io::stdin;
 
-macro_rules! timeit {
-    ($s: expr, $x: expr) => {{
-        let start = std::time::Instant::now();
-        let res = $x;
-        let duration = start.elapsed();
-        println!("{} took {:?}", $s, duration);
-        res
-    }};
-}
-
 #[derive(Debug)]
 struct Board {
     queens: Vec<u32>,
@@ -38,16 +28,8 @@ impl Board {
         self.main_diag_collis = vec![0; (2 * self.n - 1) as usize];
         self.secondary_diag_collis = vec![0; (2 * self.n - 1) as usize];
         self.row_collis = vec![0; self.n as usize];
-        self.init_queens();
-
-        for i in 0..self.n {
-            self.change_collision_for_queen(i as usize, 1);
-        }
-    }
-
-    #[inline]
-    fn init_queens(&mut self) {
         self.queens = vec![];
+        self.queens.reserve(self.n as usize);
         let mut rng = rand::thread_rng();
 
         for i in 0..self.n {
@@ -57,6 +39,8 @@ impl Board {
                     .choose(&mut rng)
                     .unwrap(),
             );
+
+            self.change_collision_for_queen(i as usize, 1);
         }
     }
 
@@ -182,19 +166,12 @@ impl Board {
     }
 
     fn get_min_row_for_queen(&self, queen_idx: usize) -> u32 {
-        let mut min_row = 0;
-        let mut min_row_val = None;
+        let mut rng = rand::thread_rng();
 
-        for i in 0..self.n {
-            let val = self.get_pos_collisions(queen_idx, i);
-
-            if min_row_val.is_none() || min_row_val.unwrap() > val {
-                min_row = i;
-                min_row_val = Some(val);
-            }
-        }
-
-        min_row
+        *self
+            .get_min_rows_for_queen(queen_idx)
+            .choose(&mut rng)
+            .unwrap()
     }
 
     fn solve(&mut self) {
@@ -208,7 +185,6 @@ impl Board {
             i += 1;
 
             if i >= 2 * self.n {
-                println!("Restart");
                 self.init();
                 self.solve();
             }
@@ -222,8 +198,8 @@ impl Board {
     pub fn to_pretty_string(&self) -> String {
         let mut res = String::new();
 
-        for i in 0..self.n {
-            for j in 0..self.n {
+        for j in 0..self.n {
+            for i in 0..self.n {
                 if self.queens[i as usize] == j {
                     res.push('*');
                 } else {
@@ -252,7 +228,5 @@ fn main() {
     let mut board = Board::new(n);
     board.solve();
 
-    dbg!(&board);
-
-    //println!("{}", board.to_pretty_string());
+    println!("{}", board.to_pretty_string());
 }
